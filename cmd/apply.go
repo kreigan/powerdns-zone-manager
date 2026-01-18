@@ -1,14 +1,16 @@
+// Package cmd provides CLI commands for the PowerDNS zone manager.
 package cmd
 
 import (
 	"fmt"
 	"os"
 
-	"github.com/kreigan/powerdns-zone-manager/pkg/config"
-	"github.com/kreigan/powerdns-zone-manager/pkg/logger"
-	"github.com/kreigan/powerdns-zone-manager/pkg/manager"
-	"github.com/kreigan/powerdns-zone-manager/pkg/powerdns"
 	"github.com/spf13/cobra"
+
+	"github.com/kreigan/powerdns-zone-manager/internal/config"
+	"github.com/kreigan/powerdns-zone-manager/internal/logger"
+	"github.com/kreigan/powerdns-zone-manager/internal/manager"
+	"github.com/kreigan/powerdns-zone-manager/internal/powerdns"
 )
 
 var applyCmd = &cobra.Command{
@@ -35,9 +37,21 @@ func init() {
 }
 
 func runApply(cmd *cobra.Command, args []string) error {
-	apiURL, _ := cmd.Flags().GetString("api-url")
-	apiKey, _ := cmd.Flags().GetString("api-key")
-	verbose, _ := cmd.Flags().GetBool("verbose")
+	apiURL, err := cmd.Flags().GetString("api-url")
+	if err != nil {
+		return fmt.Errorf("failed to get api-url flag: %w", err)
+	}
+
+	apiKey, err := cmd.Flags().GetString("api-key")
+	if err != nil {
+		return fmt.Errorf("failed to get api-key flag: %w", err)
+	}
+
+	verbose, err := cmd.Flags().GetBool("verbose")
+	if err != nil {
+		return fmt.Errorf("failed to get verbose flag: %w", err)
+	}
+
 	configFile := args[0]
 	accountName := getAccountName()
 
@@ -78,27 +92,26 @@ func runApply(cmd *cobra.Command, args []string) error {
 	printApplyResult(result, dryRun)
 
 	if len(result.Errors) > 0 {
-		return fmt.Errorf("completed with %d error(s)", len(result.Errors))
+		return fmt.Errorf("apply completed with %d error(s)", len(result.Errors))
 	}
 
-	log.Info("Configuration applied successfully")
 	return nil
 }
 
-func printApplyResult(result *manager.ApplyResult, dryRun bool) {
+func printApplyResult(result *manager.ApplyResult, isDryRun bool) {
 	prefix := ""
-	if dryRun {
+	if isDryRun {
 		prefix = "[DRY RUN] "
 	}
 
-	fmt.Fprintf(os.Stdout, "%s=== Apply Summary ===\n", prefix)
-	fmt.Fprintf(os.Stdout, "Zones created: %d\n", result.ZonesCreated)
-	fmt.Fprintf(os.Stdout, "RRsets created: %d\n", result.RRsetsCreated)
-	fmt.Fprintf(os.Stdout, "RRsets updated: %d\n", result.RRsetsUpdated)
-	fmt.Fprintf(os.Stdout, "RRsets deleted: %d\n", result.RRsetsDeleted)
+	fmt.Printf("\n%sResults:\n", prefix)
+	fmt.Printf("  Zones created:  %d\n", result.ZonesCreated)
+	fmt.Printf("  RRsets created: %d\n", result.RRsetsCreated)
+	fmt.Printf("  RRsets updated: %d\n", result.RRsetsUpdated)
+	fmt.Printf("  RRsets deleted: %d\n", result.RRsetsDeleted)
 
 	if len(result.Errors) > 0 {
-		fmt.Fprintf(os.Stderr, "\n%sErrors:\n", prefix)
+		fmt.Fprintf(os.Stderr, "\nErrors:\n")
 		for _, err := range result.Errors {
 			fmt.Fprintf(os.Stderr, "  - %v\n", err)
 		}

@@ -5,9 +5,9 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/kreigan/powerdns-zone-manager/pkg/config"
-	"github.com/kreigan/powerdns-zone-manager/pkg/logger"
-	"github.com/kreigan/powerdns-zone-manager/pkg/powerdns"
+	"github.com/kreigan/powerdns-zone-manager/internal/config"
+	"github.com/kreigan/powerdns-zone-manager/internal/logger"
+	"github.com/kreigan/powerdns-zone-manager/internal/powerdns"
 )
 
 // testLogger returns a quiet logger for tests
@@ -31,7 +31,7 @@ func NewMockClient() *MockClient {
 	}
 }
 
-func (m *MockClient) CreateZone(ctx context.Context, zone *powerdns.Zone) (*powerdns.Zone, error) {
+func (m *MockClient) CreateZone(_ context.Context, zone *powerdns.Zone) (*powerdns.Zone, error) {
 	if m.createZoneErr != nil {
 		return nil, m.createZoneErr
 	}
@@ -40,7 +40,7 @@ func (m *MockClient) CreateZone(ctx context.Context, zone *powerdns.Zone) (*powe
 	return &created, nil
 }
 
-func (m *MockClient) GetZone(ctx context.Context, zoneID string) (*powerdns.Zone, error) {
+func (m *MockClient) GetZone(_ context.Context, zoneID string) (*powerdns.Zone, error) {
 	if m.getZoneErr != nil {
 		return nil, m.getZoneErr
 	}
@@ -50,7 +50,7 @@ func (m *MockClient) GetZone(ctx context.Context, zoneID string) (*powerdns.Zone
 	return nil, nil // Zone not found
 }
 
-func (m *MockClient) PatchZone(ctx context.Context, zoneID string, patch *powerdns.ZonePatch) error {
+func (m *MockClient) PatchZone(_ context.Context, _ string, patch *powerdns.ZonePatch) error {
 	if m.patchZoneErr != nil {
 		return m.patchZoneErr
 	}

@@ -1,3 +1,4 @@
+// Package manager orchestrates zone creation and RRset management.
 package manager
 
 import (
@@ -6,26 +7,26 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/kreigan/powerdns-zone-manager/pkg/config"
-	"github.com/kreigan/powerdns-zone-manager/pkg/logger"
-	"github.com/kreigan/powerdns-zone-manager/pkg/powerdns"
+	"github.com/kreigan/powerdns-zone-manager/internal/config"
+	"github.com/kreigan/powerdns-zone-manager/internal/logger"
+	"github.com/kreigan/powerdns-zone-manager/internal/powerdns"
 )
 
-// PowerDNSClient defines the interface for PowerDNS operations
+// PowerDNSClient defines the interface for PowerDNS operations.
 type PowerDNSClient interface {
 	CreateZone(ctx context.Context, zone *powerdns.Zone) (*powerdns.Zone, error)
 	GetZone(ctx context.Context, zoneID string) (*powerdns.Zone, error)
 	PatchZone(ctx context.Context, zoneID string, patch *powerdns.ZonePatch) error
 }
 
-// Manager manages PowerDNS zones and records
+// Manager manages PowerDNS zones and records.
 type Manager struct {
 	client      PowerDNSClient
-	accountName string
 	log         *logger.Logger
+	accountName string
 }
 
-// NewManager creates a new manager
+// NewManager creates a new manager.
 func NewManager(client PowerDNSClient, accountName string, log *logger.Logger) *Manager {
 	return &Manager{
 		client:      client,
@@ -34,23 +35,27 @@ func NewManager(client PowerDNSClient, accountName string, log *logger.Logger) *
 	}
 }
 
-// ApplyOptions contains options for the Apply operation
+// ApplyOptions contains options for the Apply operation.
 type ApplyOptions struct {
 	DryRun bool
 }
 
-// ApplyResult contains the results of an Apply operation
+// ApplyResult contains the results of an Apply operation.
 type ApplyResult struct {
+	Errors        []error
 	ZonesCreated  int
 	RRsetsCreated int
 	RRsetsUpdated int
 	RRsetsDeleted int
-	Errors        []error
 }
 
-// Apply applies the configuration to PowerDNS
-// It first fetches all existing zones, validates the config, then applies changes
-func (m *Manager) Apply(ctx context.Context, cfg *config.Config, opts ApplyOptions) (*ApplyResult, error) {
+// Apply applies the configuration to PowerDNS.
+// It first fetches all existing zones, validates the config, then applies changes.
+func (m *Manager) Apply(
+	ctx context.Context,
+	cfg *config.Config,
+	opts ApplyOptions,
+) (*ApplyResult, error) {
 	result := &ApplyResult{}
 
 	// Step 1: Fetch current state of all zones in config
@@ -96,7 +101,8 @@ func (m *Manager) Apply(ctx context.Context, cfg *config.Config, opts ApplyOptio
 		state := existingZones[canonicalName]
 
 		m.log.Info("Processing zone: %s", zoneName)
-		if err := m.applyZone(ctx, canonicalName, &zoneConfig, state, zoneData[canonicalName], opts, result); err != nil {
+		err := m.applyZone(ctx, canonicalName, &zoneConfig, state, zoneData[canonicalName], opts, result)
+		if err != nil {
 			result.Errors = append(result.Errors, fmt.Errorf("zone %s: %w", zoneName, err))
 		}
 	}
@@ -141,11 +147,7 @@ func (m *Manager) applyZone(
 	}
 
 	// Apply RRsets (including NS records from nameservers property for managed zones)
-	if err := m.applyRRsets(ctx, zoneID, zoneConfig, existingZone, opts, result); err != nil {
-		return err
-	}
-
-	return nil
+	return m.applyRRsets(ctx, zoneID, zoneConfig, existingZone, opts, result)
 }
 
 func (m *Manager) applyRRsets(
@@ -177,12 +179,13 @@ func (m *Manager) applyRRsets(
 	for key, desired := range desiredRRsets {
 		existing, exists := existingByKey[key]
 
-		if !exists {
+		switch {
+		case !exists:
 			// Create new RRset
 			m.log.Info("  + Creating RRset: %s %s", desired.Name, desired.Type)
 			patchRRsets = append(patchRRsets, m.createRRsetPatch(desired))
 			result.RRsetsCreated++
-		} else if m.isManaged(existing) {
+		case m.isManaged(existing):
 			// Update managed RRset if changed
 			if m.shouldUpdateRRset(desired, existing) {
 				m.log.Info("  ~ Updating RRset: %s %s", desired.Name, desired.Type)
@@ -191,7 +194,7 @@ func (m *Manager) applyRRsets(
 			} else {
 				m.log.Debug("  = RRset unchanged: %s %s", desired.Name, desired.Type)
 			}
-		} else {
+		default:
 			m.log.Debug("  - Skipping non-managed RRset: %s %s", existing.Name, existing.Type)
 		}
 	}
@@ -265,7 +268,7 @@ func (m *Manager) buildDesiredRRsets(zoneID string, cfg *config.Zone) (map[strin
 			content := rec.Content
 			// Normalize TXT records: wrap in quotes if not already quoted
 			if rrset.Type == "TXT" && !strings.HasPrefix(content, "\"") {
-				content = fmt.Sprintf("\"%s\"", content)
+				content = fmt.Sprintf("%q", content)
 			}
 			records[i] = powerdns.Record{
 				Content:  content,
@@ -300,7 +303,7 @@ func (m *Manager) createRRsetPatch(desired powerdns.RRset) powerdns.RRset {
 	}
 }
 
-// isManaged returns true if the RRset has at least one comment with our account
+// isManaged returns true if the RRset has at least one comment with our account.
 func (m *Manager) isManaged(rrset powerdns.RRset) bool {
 	for _, comment := range rrset.Comments {
 		if comment.Account == m.accountName {

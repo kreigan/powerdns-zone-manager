@@ -1,3 +1,4 @@
+// Package logger provides structured logging with verbosity control.
 package logger
 
 import (
@@ -7,23 +8,24 @@ import (
 	"strings"
 )
 
-// Level represents logging verbosity
+// Level represents logging verbosity.
 type Level int
 
+// Log levels.
 const (
 	LevelInfo Level = iota
 	LevelDebug
 )
 
-// Logger provides structured logging with verbosity control
+// Logger provides structured logging with verbosity control.
 type Logger struct {
 	out    io.Writer
-	level  Level
 	prefix string
+	level  Level
 	dryRun bool
 }
 
-// New creates a new logger
+// New creates a new logger.
 func New(verbose bool) *Logger {
 	level := LevelInfo
 	if verbose {
@@ -35,7 +37,7 @@ func New(verbose bool) *Logger {
 	}
 }
 
-// SetDryRun sets dry-run mode for log prefix
+// SetDryRun sets dry-run mode for log prefix.
 func (l *Logger) SetDryRun(dryRun bool) {
 	l.dryRun = dryRun
 	if dryRun {
@@ -45,13 +47,13 @@ func (l *Logger) SetDryRun(dryRun bool) {
 	}
 }
 
-// Info logs informational messages (always shown)
+// Info logs informational messages (always shown).
 func (l *Logger) Info(format string, args ...interface{}) {
 	msg := fmt.Sprintf(format, args...)
 	fmt.Fprintf(l.out, "%s%s\n", l.prefix, msg)
 }
 
-// Debug logs debug messages (only in verbose mode)
+// Debug logs debug messages (only in verbose mode).
 func (l *Logger) Debug(format string, args ...interface{}) {
 	if l.level >= LevelDebug {
 		msg := fmt.Sprintf(format, args...)
@@ -59,13 +61,13 @@ func (l *Logger) Debug(format string, args ...interface{}) {
 	}
 }
 
-// Error logs error messages to stderr
+// Error logs error messages to stderr.
 func (l *Logger) Error(format string, args ...interface{}) {
 	msg := fmt.Sprintf(format, args...)
 	fmt.Fprintf(os.Stderr, "%s[ERROR] %s\n", l.prefix, msg)
 }
 
-// MaskSecret masks sensitive data, showing only first and last 2 chars
+// MaskSecret masks sensitive data, showing only first and last 2 chars.
 func MaskSecret(secret string) string {
 	if len(secret) <= 4 {
 		return "****"
@@ -73,7 +75,7 @@ func MaskSecret(secret string) string {
 	return secret[:2] + strings.Repeat("*", len(secret)-4) + secret[len(secret)-2:]
 }
 
-// MaskURL masks API key in URL if present
+// MaskURL masks API key in URL if present.
 func MaskURL(url string) string {
 	// URLs shouldn't contain API keys, but just in case
 	return url

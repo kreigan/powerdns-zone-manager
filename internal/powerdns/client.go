@@ -1,3 +1,4 @@
+// Package powerdns provides a client for the PowerDNS Authoritative API.
 package powerdns
 
 import (
@@ -9,31 +10,35 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/kreigan/powerdns-zone-manager/pkg/logger"
+	"github.com/kreigan/powerdns-zone-manager/internal/logger"
 )
 
-// Client is a PowerDNS API client for API version 1
+// Client is a PowerDNS API client for API version 1.
 type Client struct {
+	log        *logger.Logger
+	httpClient *http.Client
 	baseURL    string
 	apiKey     string
-	httpClient *http.Client
-	log        *logger.Logger
 }
 
-// NewClient creates a new PowerDNS client
+// NewClient creates a new PowerDNS client.
 // baseURL should be the full API URL including server path, e.g.:
 // http://localhost:8081/api/v1/servers/localhost
 func NewClient(baseURL, apiKey string, log *logger.Logger) *Client {
 	return &Client{
 		baseURL:    strings.TrimSuffix(baseURL, "/"),
 		apiKey:     apiKey,
-		httpClient: &http.Client{},
 		log:        log,
+		httpClient: &http.Client{},
 	}
 }
 
-// doRequest performs an HTTP request to the PowerDNS API
-func (c *Client) doRequest(ctx context.Context, method, path string, body interface{}) (*http.Response, error) {
+// doRequest performs an HTTP request to the PowerDNS API.
+func (c *Client) doRequest(
+	ctx context.Context,
+	method, path string,
+	body interface{},
+) (*http.Response, error) {
 	var reqBody io.Reader
 	if body != nil {
 		data, err := json.Marshal(body)
@@ -66,9 +71,13 @@ func (c *Client) doRequest(ctx context.Context, method, path string, body interf
 	return resp, nil
 }
 
-// handleError processes API error responses and logs them
+// handleError processes API error responses and logs them.
 func (c *Client) handleError(method, path string, resp *http.Response) error {
-	body, _ := io.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		c.log.Error("API error: %s %s -> %d (failed to read body: %v)", method, path, resp.StatusCode, err)
+		return fmt.Errorf("API request failed with status %d", resp.StatusCode)
+	}
 
 	var apiErr APIError
 	if err := json.Unmarshal(body, &apiErr); err == nil && apiErr.Error != "" {
@@ -84,7 +93,7 @@ func (c *Client) handleError(method, path string, resp *http.Response) error {
 	return fmt.Errorf("API request failed with status %d: %s", resp.StatusCode, string(body))
 }
 
-// CreateZone creates a new DNS zone
+// CreateZone creates a new DNS zone.
 // POST /zones
 // See: https://doc.powerdns.com/authoritative/http-api/zone.html
 func (c *Client) CreateZone(ctx context.Context, zone *Zone) (*Zone, error) {
@@ -93,7 +102,9 @@ func (c *Client) CreateZone(ctx context.Context, zone *Zone) (*Zone, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() {
+		_ = resp.Body.Close() //nolint:errcheck // best effort close
+	}()
 
 	if resp.StatusCode != http.StatusCreated {
 		return nil, c.handleError("POST", path, resp)
@@ -112,7 +123,7 @@ func (c *Client) CreateZone(ctx context.Context, zone *Zone) (*Zone, error) {
 	return &created, nil
 }
 
-// GetZone retrieves zone information
+// GetZone retrieves zone information.
 // GET /zones/{zone_id}
 // See: https://doc.powerdns.com/authoritative/http-api/zone.html
 func (c *Client) GetZone(ctx context.Context, zoneID string) (*Zone, error) {
@@ -126,7 +137,9 @@ func (c *Client) GetZone(ctx context.Context, zoneID string) (*Zone, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() {
+		_ = resp.Body.Close() //nolint:errcheck // best effort close
+	}()
 
 	if resp.StatusCode == http.StatusNotFound {
 		return nil, nil // Zone not found is not an error
@@ -149,7 +162,7 @@ func (c *Client) GetZone(ctx context.Context, zoneID string) (*Zone, error) {
 	return &zone, nil
 }
 
-// PatchZone modifies RRsets in a zone
+// PatchZone modifies RRsets in a zone.
 // PATCH /zones/{zone_id}
 // Creates/modifies/deletes RRsets present in the payload and their comments.
 // See: https://doc.powerdns.com/authoritative/http-api/zone.html
@@ -163,7 +176,9 @@ func (c *Client) PatchZone(ctx context.Context, zoneID string, patch *ZonePatch)
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() {
+		_ = resp.Body.Close() //nolint:errcheck // best effort close
+	}()
 
 	if resp.StatusCode != http.StatusNoContent {
 		return c.handleError("PATCH", path, resp)
