@@ -1,0 +1,14 @@
+# build artifacts
+bin/
+dist/
+*.test
+*.out
+
+# Dependency directories
+vendor/
+
+# Log files
+*.log
+
+# IDE specific files
+.vscode/

@@ -1,0 +1,28 @@
+zones:
+  example.local:
+    nameservers:
+      - ns.example.local
+
+    rrsets:
+      - name: ns
+        type: A
+        ttl: 86400
+        records:
+          - content: 10.1.21.3
+            comment: Record comment
+
+      - name: '@'
+        type: A
+        records: 192.168.2.1
+
+      - name: www
+        type: A
+        records:
+          - 192.168.2.1
+
+      - name: test-auto
+        type: TXT
+        records:
+          - Test TXT record
+          - content: Another TXT record
+            disabled: true
