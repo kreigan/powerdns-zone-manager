@@ -53,11 +53,25 @@ func runApply(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to get verbose flag: %w", err)
 	}
 
+	jsonOutput, err := cmd.Flags().GetBool("json")
+	if err != nil {
+		return fmt.Errorf("failed to get json flag: %w", err)
+	}
+
+	noColor, err := cmd.Flags().GetBool("no-color")
+	if err != nil {
+		return fmt.Errorf("failed to get no-color flag: %w", err)
+	}
+
 	configFile := args[0]
 	accountName := getAccountName()
 
 	// Initialize logger
-	log := logger.New(verbose)
+	log := logger.New(logger.Options{
+		Verbose: verbose,
+		JSON:    jsonOutput,
+		NoColor: noColor,
+	})
 	log.SetDryRun(dryRun)
 
 	log.Info("Loading configuration from %s", configFile)
@@ -90,7 +104,7 @@ func runApply(cmd *cobra.Command, args []string) error {
 	}
 
 	// Print results
-	printApplyResult(result, dryRun)
+	printApplyResult(log, result, dryRun, jsonOutput)
 
 	if len(result.Errors) > 0 {
 		return fmt.Errorf("apply completed with %d error(s)", len(result.Errors))
@@ -99,7 +113,18 @@ func runApply(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-func printApplyResult(result *manager.ApplyResult, isDryRun bool) {
+func printApplyResult(log *logger.Logger, result *manager.ApplyResult, isDryRun, jsonOutput bool) {
+	if jsonOutput {
+		log.InfoWithData("Apply completed", map[string]interface{}{
+			"zonesCreated":  result.ZonesCreated,
+			"rrsetsCreated": result.RRsetsCreated,
+			"rrsetsUpdated": result.RRsetsUpdated,
+			"rrsetsDeleted": result.RRsetsDeleted,
+			"errors":        len(result.Errors),
+		})
+		return
+	}
+
 	prefix := ""
 	if isDryRun {
 		prefix = "[DRY RUN] "

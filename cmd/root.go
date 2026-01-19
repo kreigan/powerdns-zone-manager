@@ -47,6 +47,8 @@ func init() {
 		"api-url", "", "PowerDNS API base URL (e.g., http://localhost:8081/api/v1/servers/localhost)")
 	rootCmd.PersistentFlags().String("api-key", "", "PowerDNS API key")
 	rootCmd.PersistentFlags().BoolP("verbose", "v", false, "Enable verbose/debug output")
+	rootCmd.PersistentFlags().Bool("json", false, "Output in JSON format (structured logging)")
+	rootCmd.PersistentFlags().Bool("no-color", false, "Disable colored output")
 
 	if err := rootCmd.MarkPersistentFlagRequired("api-url"); err != nil {
 		panic(fmt.Sprintf("failed to mark api-url as required: %v", err))

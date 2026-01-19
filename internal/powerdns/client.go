@@ -49,7 +49,7 @@ func (c *Client) doRequest(
 	}
 
 	url := c.baseURL + path
-	c.log.Debug("HTTP %s %s", method, url)
+	c.log.HTTPRequest(method, url)
 
 	req, err := http.NewRequestWithContext(ctx, method, url, reqBody)
 	if err != nil {
@@ -67,7 +67,7 @@ func (c *Client) doRequest(
 		return nil, fmt.Errorf("request failed: %w", err)
 	}
 
-	c.log.Debug("HTTP %s %s -> %d %s", method, url, resp.StatusCode, resp.Status)
+	c.log.HTTPResponse(method, url, resp.StatusCode)
 	return resp, nil
 }
 

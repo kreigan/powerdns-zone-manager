@@ -12,7 +12,7 @@ import (
 
 // testLogger returns a quiet logger for tests
 func testLogger() *logger.Logger {
-	return logger.New(false)
+	return logger.New(logger.Options{Verbose: false, NoColor: true})
 }
 
 // MockClient implements PowerDNSClient for testing
