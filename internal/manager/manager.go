@@ -352,17 +352,24 @@ func (m *Manager) createRRsetPatch(desired powerdns.RRset) powerdns.RRset {
 		Records:    desired.Records,
 		Comments: []powerdns.Comment{
 			{
-				Content: "Managed by zone-manager",
+				Content: m.ownerComment(),
 				Account: m.accountName,
 			},
 		},
 	}
 }
 
-// isManaged returns true if the RRset has at least one comment with our account.
+// ownerComment returns the ownership marker comment content.
+func (m *Manager) ownerComment() string {
+	return "owner=" + m.accountName
+}
+
+// isManaged returns true if the RRset has an ownership comment matching our account.
+// Ownership is indicated by a comment with content "owner=<account-name>".
 func (m *Manager) isManaged(rrset powerdns.RRset) bool {
+	ownerMarker := m.ownerComment()
 	for _, comment := range rrset.Comments {
-		if comment.Account == m.accountName {
+		if comment.Content == ownerMarker {
 			return true
 		}
 	}

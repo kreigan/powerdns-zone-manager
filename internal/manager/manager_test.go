@@ -156,7 +156,7 @@ func TestManager_Apply_ExistingManagedZone(t *testing.T) {
 					{Content: "ns1.example.com.", Disabled: false},
 				},
 				Comments: []powerdns.Comment{
-					{Content: "Managed", Account: "zone-manager"},
+					{Content: "owner=zone-manager", Account: "zone-manager"},
 				},
 			},
 			{
@@ -167,7 +167,7 @@ func TestManager_Apply_ExistingManagedZone(t *testing.T) {
 					{Content: "192.168.1.99", Disabled: false},
 				},
 				Comments: []powerdns.Comment{
-					{Content: "Managed", Account: "zone-manager"},
+					{Content: "owner=zone-manager", Account: "zone-manager"},
 				},
 			},
 		},
@@ -273,7 +273,7 @@ func TestManager_Apply_UpdateManagedRecord(t *testing.T) {
 					{Content: "192.168.1.1", Disabled: false},
 				},
 				Comments: []powerdns.Comment{
-					{Content: "Managed", Account: "zone-manager"},
+					{Content: "owner=zone-manager", Account: "zone-manager"},
 				},
 			},
 		},
@@ -431,7 +431,7 @@ func TestIsManaged(t *testing.T) {
 			name: "managed",
 			rrset: powerdns.RRset{
 				Comments: []powerdns.Comment{
-					{Account: "zone-manager"},
+					{Content: "owner=zone-manager"},
 				},
 			},
 			expected: true,
@@ -440,7 +440,7 @@ func TestIsManaged(t *testing.T) {
 			name: "not managed - different account",
 			rrset: powerdns.RRset{
 				Comments: []powerdns.Comment{
-					{Account: "other-account"},
+					{Content: "owner=other-account"},
 				},
 			},
 			expected: false,
@@ -456,8 +456,8 @@ func TestIsManaged(t *testing.T) {
 			name: "managed - one of many comments",
 			rrset: powerdns.RRset{
 				Comments: []powerdns.Comment{
-					{Account: "other"},
-					{Account: "zone-manager"},
+					{Content: "some other comment"},
+					{Content: "owner=zone-manager"},
 				},
 			},
 			expected: true,
