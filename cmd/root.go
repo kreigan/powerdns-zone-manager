@@ -34,7 +34,8 @@ name in comments. Only managed records are modified; other records are left unto
 A record set is considered managed if it has at least one comment where its
 'account' property value matches the configured account name (default: zone-manager,
 configurable via ACCOUNT_NAME environment variable).`,
-	Version: fmt.Sprintf("%s (commit: %s, built: %s)", version, commit, date),
+	Version:       fmt.Sprintf("%s (commit: %s, built: %s)", version, commit, date),
+	SilenceErrors: true,
 }
 
 // Execute runs the root command.
