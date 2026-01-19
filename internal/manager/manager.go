@@ -3,6 +3,7 @@ package manager
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -11,6 +12,9 @@ import (
 	"github.com/kreigan/powerdns-zone-manager/internal/logger"
 	"github.com/kreigan/powerdns-zone-manager/internal/powerdns"
 )
+
+// ErrAborted is returned when user cancels the operation.
+var ErrAborted = errors.New("operation aborted by user")
 
 // PowerDNSClient defines the interface for PowerDNS operations.
 type PowerDNSClient interface {
@@ -23,6 +27,7 @@ type PowerDNSClient interface {
 type Manager struct {
 	client      PowerDNSClient
 	log         *logger.Logger
+	confirmFn   ConfirmFunc
 	accountName string
 }
 
@@ -37,8 +42,12 @@ func NewManager(client PowerDNSClient, accountName string, log *logger.Logger) *
 
 // ApplyOptions contains options for the Apply operation.
 type ApplyOptions struct {
-	DryRun bool
+	DryRun      bool
+	AutoConfirm bool
 }
+
+// ConfirmFunc is a function that asks for user confirmation.
+type ConfirmFunc func(prompt string) bool
 
 // ApplyResult contains the results of an Apply operation.
 type ApplyResult struct {
@@ -114,6 +123,11 @@ func (m *Manager) Apply(
 	}
 
 	return result, nil
+}
+
+// SetConfirmFunc sets the confirmation function for interactive prompts.
+func (m *Manager) SetConfirmFunc(fn ConfirmFunc) {
+	m.confirmFn = fn
 }
 
 func (m *Manager) applyZone(
@@ -229,16 +243,35 @@ func (m *Manager) applyRRsets(
 	}
 
 	// Apply changes
-	if len(patchRRsets) > 0 {
-		m.log.Debug("  Applying %d RRset change(s)...", len(patchRRsets))
-		if !opts.DryRun {
-			patch := &powerdns.ZonePatch{RRsets: patchRRsets}
-			if err := m.client.PatchZone(ctx, zoneID, patch); err != nil {
-				return fmt.Errorf("failed to patch zone: %w", err)
-			}
-		}
-	} else {
+	return m.sendPatch(ctx, zoneID, patchRRsets, opts)
+}
+
+func (m *Manager) sendPatch(
+	ctx context.Context,
+	zoneID string,
+	patchRRsets []powerdns.RRset,
+	opts ApplyOptions,
+) error {
+	if len(patchRRsets) == 0 {
 		m.log.Debug("  No RRset changes needed")
+		return nil
+	}
+
+	m.log.Debug("  Applying %d RRset change(s)...", len(patchRRsets))
+	if opts.DryRun {
+		return nil
+	}
+
+	// Ask for confirmation before sending changes to server
+	if !opts.AutoConfirm && m.confirmFn != nil {
+		if !m.confirmFn("Apply these changes?") {
+			return ErrAborted
+		}
+	}
+
+	patch := &powerdns.ZonePatch{RRsets: patchRRsets}
+	if err := m.client.PatchZone(ctx, zoneID, patch); err != nil {
+		return fmt.Errorf("failed to patch zone: %w", err)
 	}
 
 	return nil
@@ -494,6 +527,9 @@ func (m *Manager) printManagedRRsets(title string, zone *powerdns.Zone) {
 		}
 	}
 
+	// Sort by Type, then Name
+	sortTableRows(rows)
+
 	headers := []string{"NAME", "TYPE", "TTL", "CONTENT", "STATUS"}
 	m.log.Table(title, headers, rows)
 }
@@ -524,6 +560,19 @@ func (m *Manager) printDesiredRRsets(title string, rrsets map[string]powerdns.RR
 		}
 	}
 
+	// Sort by Type, then Name
+	sortTableRows(rows)
+
 	headers := []string{"NAME", "TYPE", "TTL", "CONTENT", "STATUS"}
 	m.log.Table(title, headers, rows)
+}
+
+// sortTableRows sorts rows by Type (index 1), then Name (index 0).
+func sortTableRows(rows [][]string) {
+	sort.Slice(rows, func(i, j int) bool {
+		if rows[i][1] != rows[j][1] {
+			return rows[i][1] < rows[j][1]
+		}
+		return rows[i][0] < rows[j][0]
+	})
 }

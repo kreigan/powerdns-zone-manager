@@ -2,8 +2,10 @@
 package cmd
 
 import (
+	"bufio"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -31,10 +33,12 @@ A record set is considered managed if it has at least one comment where its
 }
 
 var dryRun bool
+var autoConfirm bool
 
 func init() {
 	rootCmd.AddCommand(applyCmd)
 	applyCmd.Flags().BoolVar(&dryRun, "dry-run", false, "Show what would be changed without applying")
+	applyCmd.Flags().BoolVarP(&autoConfirm, "auto-confirm", "y", false, "Skip confirmation prompt")
 }
 
 func runApply(cmd *cobra.Command, args []string) error {
@@ -92,9 +96,24 @@ func runApply(cmd *cobra.Command, args []string) error {
 	// Create manager
 	mgr := manager.NewManager(client, accountName, log)
 
+	// Set confirmation function (skip in JSON mode or auto-confirm)
+	if !jsonOutput && !autoConfirm && !dryRun {
+		mgr.SetConfirmFunc(func(prompt string) bool {
+			fmt.Printf("%s [y/N]: ", prompt)
+			reader := bufio.NewReader(os.Stdin)
+			response, err := reader.ReadString('\n')
+			if err != nil {
+				return false
+			}
+			response = strings.TrimSpace(strings.ToLower(response))
+			return response == "y" || response == "yes"
+		})
+	}
+
 	// Apply configuration
 	opts := manager.ApplyOptions{
-		DryRun: dryRun,
+		DryRun:      dryRun,
+		AutoConfirm: jsonOutput || autoConfirm,
 	}
 
 	log.Info("Applying configuration...")
