@@ -125,10 +125,6 @@ func runApply(cmd *cobra.Command, args []string) error {
 	// Print results
 	printApplyResult(log, result, dryRun, jsonOutput)
 
-	if len(result.Errors) > 0 {
-		return fmt.Errorf("apply completed with %d error(s)", len(result.Errors))
-	}
-
 	return nil
 }
 
@@ -139,7 +135,6 @@ func printApplyResult(log *logger.Logger, result *manager.ApplyResult, isDryRun,
 			"rrsetsCreated": result.RRsetsCreated,
 			"rrsetsUpdated": result.RRsetsUpdated,
 			"rrsetsDeleted": result.RRsetsDeleted,
-			"errors":        len(result.Errors),
 		})
 		return
 	}
@@ -154,11 +149,4 @@ func printApplyResult(log *logger.Logger, result *manager.ApplyResult, isDryRun,
 	fmt.Printf("  RRsets created: %d\n", result.RRsetsCreated)
 	fmt.Printf("  RRsets updated: %d\n", result.RRsetsUpdated)
 	fmt.Printf("  RRsets deleted: %d\n", result.RRsetsDeleted)
-
-	if len(result.Errors) > 0 {
-		fmt.Fprintf(os.Stderr, "\nErrors:\n")
-		for _, err := range result.Errors {
-			fmt.Fprintf(os.Stderr, "  - %v\n", err)
-		}
-	}
 }

@@ -3,6 +3,7 @@ package manager
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/kreigan/powerdns-zone-manager/internal/config"
@@ -256,6 +257,55 @@ func TestManager_Apply_NonManagedRecordNotTouched(t *testing.T) {
 	}
 	if result.RRsetsDeleted != 0 {
 		t.Errorf("Expected 0 rrsets deleted (non-managed should not be touched), got %d", result.RRsetsDeleted)
+	}
+}
+
+func TestManager_Apply_ErrorOnConflictWithNonManaged(t *testing.T) {
+	client := NewMockClient()
+	// Pre-populate with existing managed zone containing a non-managed record
+	client.zones["example.com."] = &powerdns.Zone{
+		Name:    "example.com.",
+		Account: "zone-manager",
+		RRsets: []powerdns.RRset{
+			{
+				Name: "www.example.com.",
+				Type: "A",
+				TTL:  300,
+				Records: []powerdns.Record{
+					{Content: "192.168.1.99", Disabled: false},
+				},
+				Comments: []powerdns.Comment{
+					{Content: "Manual record", Account: "other-account"},
+				},
+			},
+		},
+	}
+
+	mgr := NewManager(client, "zone-manager", testLogger())
+
+	// Config tries to manage the same record that already exists but is not managed
+	cfg := &config.Config{
+		Zones: map[string]config.Zone{
+			"example.com": {
+				RRsets: []config.RRsetInput{
+					{
+						Name:    "www",
+						Type:    "A",
+						Records: "192.168.1.1",
+					},
+				},
+			},
+		},
+	}
+
+	_, err := mgr.Apply(context.Background(), cfg, ApplyOptions{})
+	if err == nil {
+		t.Fatal("Expected error when config conflicts with non-managed record, got nil")
+	}
+
+	expectedMsg := "already exists but is not managed"
+	if !strings.Contains(err.Error(), expectedMsg) {
+		t.Errorf("Expected error to contain %q, got: %v", expectedMsg, err)
 	}
 }
 

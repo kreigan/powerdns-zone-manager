@@ -51,7 +51,6 @@ type ConfirmFunc func(prompt string) bool
 
 // ApplyResult contains the results of an Apply operation.
 type ApplyResult struct {
-	Errors        []error
 	ZonesCreated  int
 	RRsetsCreated int
 	RRsetsUpdated int
@@ -118,7 +117,7 @@ func (m *Manager) Apply(
 		m.log.Info("Processing zone: %s", zoneName)
 		err := m.applyZone(ctx, canonicalName, &zoneConfig, state, zoneData[canonicalName], opts, result)
 		if err != nil {
-			result.Errors = append(result.Errors, fmt.Errorf("zone %s: %w", zoneName, err))
+			return nil, fmt.Errorf("zone %s: %w", zoneName, err)
 		}
 	}
 
@@ -221,7 +220,9 @@ func (m *Manager) applyRRsets(
 				m.log.Debug("  = RRset unchanged: %s %s", desired.Name, desired.Type)
 			}
 		default:
-			m.log.Debug("  - Skipping non-managed RRset: %s %s", existing.Name, existing.Type)
+			// Config specifies a record that exists but is not managed - this is an error
+			return fmt.Errorf("RRset %s %s already exists but is not managed by %s",
+				existing.Name, existing.Type, m.accountName)
 		}
 	}
 
