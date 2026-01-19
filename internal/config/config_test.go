@@ -48,7 +48,8 @@ func TestValidate_NameserversNotRequiredForExisting(t *testing.T) {
 	}
 }
 
-func TestValidate_UnmanagedZoneFails(t *testing.T) {
+func TestValidate_UnmanagedZoneAllowsRRsets(t *testing.T) {
+	// Non-managed zones should allow RRsets (except NS)
 	cfg := &Config{
 		Zones: map[string]Zone{
 			"example.com": {
@@ -64,11 +65,31 @@ func TestValidate_UnmanagedZoneFails(t *testing.T) {
 	}
 
 	err := cfg.Validate(existingZones)
-	if err == nil {
-		t.Error("Expected validation error for unmanaged zone, got nil")
+	if err != nil {
+		t.Errorf("Expected no error for rrsets on non-managed zone, got: %v", err)
 	}
-	if err != nil && !strings.Contains(err.Error(), "not managed") {
-		t.Errorf("Expected not managed error, got: %v", err)
+}
+
+func TestValidate_UnmanagedZoneAllowsNameserversInConfig(t *testing.T) {
+	// Non-managed zones allow nameservers in config (they are silently skipped)
+	cfg := &Config{
+		Zones: map[string]Zone{
+			"example.com": {
+				Nameservers: []string{"ns1.example.com."},
+				RRsets: []RRsetInput{
+					{Name: "www", Type: "A", Records: "192.168.1.1"},
+				},
+			},
+		},
+	}
+
+	existingZones := map[string]ZoneState{
+		"example.com.": {Exists: true, IsManaged: false},
+	}
+
+	err := cfg.Validate(existingZones)
+	if err != nil {
+		t.Errorf("Expected no error for nameservers on non-managed zone (should be skipped), got: %v", err)
 	}
 }
 

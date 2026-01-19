@@ -59,13 +59,13 @@ func (m *Manager) Apply(
 	result := &ApplyResult{}
 
 	// Step 1: Fetch current state of all zones in config
-	m.log.Debug("Fetching current state of %d zone(s)...", len(cfg.Zones))
+	m.log.Info("Fetching current state of %d zone(s)...", len(cfg.Zones))
 	existingZones := make(map[string]config.ZoneState)
 	zoneData := make(map[string]*powerdns.Zone)
 
 	for zoneName := range cfg.Zones {
 		canonicalName := config.CanonicalZoneName(zoneName)
-		m.log.Debug("Checking zone: %s", canonicalName)
+		m.log.Info("  Checking zone: %s", canonicalName)
 		zone, err := m.client.GetZone(ctx, canonicalName)
 		if err != nil {
 			return nil, fmt.Errorf("failed to check zone %s: %w", zoneName, err)
@@ -78,18 +78,22 @@ func (m *Manager) Apply(
 				IsManaged: isManaged,
 			}
 			zoneData[canonicalName] = zone
-			m.log.Debug("Zone %s exists (managed=%t, account=%q)", canonicalName, isManaged, zone.Account)
+			if isManaged {
+				m.log.Info("    Zone exists (managed)")
+			} else {
+				m.log.Info("    Zone exists (not managed, account=%q)", zone.Account)
+			}
 		} else {
 			existingZones[canonicalName] = config.ZoneState{
 				Exists:    false,
 				IsManaged: false,
 			}
-			m.log.Debug("Zone %s does not exist", canonicalName)
+			m.log.Info("    Zone does not exist")
 		}
 	}
 
 	// Step 2: Validate configuration against current state
-	m.log.Debug("Validating configuration...")
+	m.log.Info("Validating configuration...")
 	if validationErr := cfg.Validate(existingZones); validationErr != nil {
 		return nil, validationErr
 	}
@@ -147,7 +151,7 @@ func (m *Manager) applyZone(
 	}
 
 	// Apply RRsets (including NS records from nameservers property for managed zones)
-	return m.applyRRsets(ctx, zoneID, zoneConfig, existingZone, opts, result)
+	return m.applyRRsets(ctx, zoneID, zoneConfig, existingZone, state, opts, result)
 }
 
 func (m *Manager) applyRRsets(
@@ -155,11 +159,12 @@ func (m *Manager) applyRRsets(
 	zoneID string,
 	cfg *config.Zone,
 	existingZone *powerdns.Zone,
+	state config.ZoneState,
 	opts ApplyOptions,
 	result *ApplyResult,
 ) error {
-	// Build desired RRsets
-	desiredRRsets, err := m.buildDesiredRRsets(zoneID, cfg)
+	// Build desired RRsets (skip NS for non-managed existing zones)
+	desiredRRsets, err := m.buildDesiredRRsets(zoneID, cfg, state)
 	if err != nil {
 		return err
 	}
@@ -183,12 +188,14 @@ func (m *Manager) applyRRsets(
 		case !exists:
 			// Create new RRset
 			m.log.Info("  + Creating RRset: %s %s", desired.Name, desired.Type)
+			m.logRRsetDiff(nil, &desired)
 			patchRRsets = append(patchRRsets, m.createRRsetPatch(desired))
 			result.RRsetsCreated++
 		case m.isManaged(existing):
 			// Update managed RRset if changed
 			if m.shouldUpdateRRset(desired, existing) {
 				m.log.Info("  ~ Updating RRset: %s %s", desired.Name, desired.Type)
+				m.logRRsetDiff(&existing, &desired)
 				patchRRsets = append(patchRRsets, m.createRRsetPatch(desired))
 				result.RRsetsUpdated++
 			} else {
@@ -205,6 +212,7 @@ func (m *Manager) applyRRsets(
 			if _, desired := desiredRRsets[key]; !desired {
 				// Delete orphaned managed RRset
 				m.log.Info("  - Deleting orphaned RRset: %s %s", existing.Name, existing.Type)
+				m.logRRsetDiff(&existing, nil)
 				patchRRsets = append(patchRRsets, powerdns.RRset{
 					Name:       existing.Name,
 					Type:       existing.Type,
@@ -231,25 +239,35 @@ func (m *Manager) applyRRsets(
 	return nil
 }
 
-func (m *Manager) buildDesiredRRsets(zoneID string, cfg *config.Zone) (map[string]powerdns.RRset, error) {
+func (m *Manager) buildDesiredRRsets(
+	zoneID string,
+	cfg *config.Zone,
+	state config.ZoneState,
+) (map[string]powerdns.RRset, error) {
 	desired := make(map[string]powerdns.RRset)
 
 	// Add NS RRset from nameservers property if provided
+	// Only if zone is new or managed (we own it)
 	if len(cfg.Nameservers) > 0 {
-		nsRecords := make([]powerdns.Record, len(cfg.Nameservers))
-		for i, ns := range cfg.Nameservers {
-			nsRecords[i] = powerdns.Record{
-				Content:  m.normalizeNameserver(ns, zoneID),
-				Disabled: false,
+		if state.IsManaged || !state.Exists {
+			nsRecords := make([]powerdns.Record, len(cfg.Nameservers))
+			for i, ns := range cfg.Nameservers {
+				nsRecords[i] = powerdns.Record{
+					Content:  m.normalizeNameserver(ns, zoneID),
+					Disabled: false,
+				}
 			}
-		}
 
-		key := rrsetKey(zoneID, "NS")
-		desired[key] = powerdns.RRset{
-			Name:    zoneID,
-			Type:    "NS",
-			TTL:     300, // Default TTL for NS records
-			Records: nsRecords,
+			key := rrsetKey(zoneID, "NS")
+			desired[key] = powerdns.RRset{
+				Name:    zoneID,
+				Type:    "NS",
+				TTL:     300, // Default TTL for NS records
+				Records: nsRecords,
+			}
+		} else {
+			// Zone exists but is not managed - warn about skipped nameservers
+			m.log.Info("  ! Skipping nameservers (zone is not managed)")
 		}
 	}
 
@@ -374,4 +392,77 @@ func (m *Manager) normalizeNameserver(ns, zoneID string) string {
 
 func rrsetKey(name, recordType string) string {
 	return fmt.Sprintf("%s/%s", strings.ToLower(name), strings.ToUpper(recordType))
+}
+
+const disabledSuffix = " [disabled]"
+
+// formatRecord returns a formatted string for a record with optional disabled status.
+func formatRecord(content string, disabled bool) string {
+	if disabled {
+		return content + disabledSuffix
+	}
+	return content
+}
+
+// logRRsetDiff logs detailed diff between existing and desired RRsets in verbose mode.
+func (m *Manager) logRRsetDiff(existing, desired *powerdns.RRset) {
+	switch {
+	case existing == nil && desired != nil:
+		m.logNewRRset(desired)
+	case existing != nil && desired == nil:
+		m.logDeletedRRset(existing)
+	case existing != nil && desired != nil:
+		m.logUpdatedRRset(existing, desired)
+	}
+}
+
+func (m *Manager) logNewRRset(desired *powerdns.RRset) {
+	m.log.Debug("      TTL: %d", desired.TTL)
+	for _, r := range desired.Records {
+		m.log.Debug("      + %s", formatRecord(r.Content, r.Disabled))
+	}
+}
+
+func (m *Manager) logDeletedRRset(existing *powerdns.RRset) {
+	m.log.Debug("      TTL: %d", existing.TTL)
+	for _, r := range existing.Records {
+		m.log.Debug("      - %s", formatRecord(r.Content, r.Disabled))
+	}
+}
+
+func (m *Manager) logUpdatedRRset(existing, desired *powerdns.RRset) {
+	if existing.TTL != desired.TTL {
+		m.log.Debug("      TTL: %d -> %d", existing.TTL, desired.TTL)
+	} else {
+		m.log.Debug("      TTL: %d", desired.TTL)
+	}
+
+	existingRecords := make(map[string]powerdns.Record)
+	for _, r := range existing.Records {
+		existingRecords[r.Content] = r
+	}
+	desiredRecords := make(map[string]powerdns.Record)
+	for _, r := range desired.Records {
+		desiredRecords[r.Content] = r
+	}
+
+	// Show removed records
+	for content, r := range existingRecords {
+		if _, exists := desiredRecords[content]; !exists {
+			m.log.Debug("      - %s", formatRecord(content, r.Disabled))
+		}
+	}
+
+	// Show added or changed records
+	for content, r := range desiredRecords {
+		existingR, exists := existingRecords[content]
+		switch {
+		case !exists:
+			m.log.Debug("      + %s", formatRecord(content, r.Disabled))
+		case existingR.Disabled != r.Disabled:
+			oldFmt := formatRecord(content, existingR.Disabled)
+			newFmt := formatRecord(content, r.Disabled)
+			m.log.Debug("      ~ %s -> %s", oldFmt, newFmt)
+		}
+	}
 }

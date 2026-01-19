@@ -305,7 +305,7 @@ func TestManager_Apply_UpdateManagedRecord(t *testing.T) {
 	}
 }
 
-func TestManager_Apply_ValidationFailsForUnmanagedZone(t *testing.T) {
+func TestManager_Apply_UnmanagedZoneAllowsRRsets(t *testing.T) {
 	client := NewMockClient()
 	// Zone exists but with different account
 	client.zones["example.com."] = &powerdns.Zone{
@@ -316,6 +316,7 @@ func TestManager_Apply_ValidationFailsForUnmanagedZone(t *testing.T) {
 
 	mgr := NewManager(client, "zone-manager", testLogger())
 
+	// Only RRsets, no nameservers - should succeed
 	cfg := &config.Config{
 		Zones: map[string]config.Zone{
 			"example.com": {
@@ -330,9 +331,49 @@ func TestManager_Apply_ValidationFailsForUnmanagedZone(t *testing.T) {
 		},
 	}
 
-	_, err := mgr.Apply(context.Background(), cfg, ApplyOptions{})
-	if err == nil {
-		t.Fatal("Expected validation error for unmanaged zone, got nil")
+	result, err := mgr.Apply(context.Background(), cfg, ApplyOptions{})
+	if err != nil {
+		t.Fatalf("Expected success for RRsets on unmanaged zone, got error: %v", err)
+	}
+	if result.RRsetsCreated != 1 {
+		t.Errorf("Expected 1 RRset created, got %d", result.RRsetsCreated)
+	}
+}
+
+func TestManager_Apply_UnmanagedZoneSkipsNameservers(t *testing.T) {
+	client := NewMockClient()
+	// Zone exists but with different account
+	client.zones["example.com."] = &powerdns.Zone{
+		Name:    "example.com.",
+		Account: "other-owner",
+		RRsets:  []powerdns.RRset{},
+	}
+
+	mgr := NewManager(client, "zone-manager", testLogger())
+
+	// Nameservers specified on unmanaged zone - should be silently skipped
+	cfg := &config.Config{
+		Zones: map[string]config.Zone{
+			"example.com": {
+				Nameservers: []string{"ns1.example.com."},
+				RRsets: []config.RRsetInput{
+					{
+						Name:    "www",
+						Type:    "A",
+						Records: "192.168.1.1",
+					},
+				},
+			},
+		},
+	}
+
+	result, err := mgr.Apply(context.Background(), cfg, ApplyOptions{})
+	if err != nil {
+		t.Fatalf("Expected success (nameservers silently skipped), got error: %v", err)
+	}
+	// Only RRset created, NS should be skipped
+	if result.RRsetsCreated != 1 {
+		t.Errorf("Expected 1 RRset created (NS skipped), got %d", result.RRsetsCreated)
 	}
 }
 

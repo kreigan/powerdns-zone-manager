@@ -126,10 +126,8 @@ func (c *Config) validateZone(
 		errs.Add("zone %q: nameservers are required when creating a new zone", zoneName)
 	}
 
-	// If zone exists but is not managed, we cannot modify it
-	if state.Exists && !state.IsManaged {
-		errs.Add("zone %q: zone exists but is not managed (account does not match)", zoneName)
-	}
+	// Note: If zone exists but is not managed, nameservers in config are silently ignored
+	// (NS records are skipped in the manager)
 
 	// Validate nameservers format
 	for i, ns := range zone.Nameservers {

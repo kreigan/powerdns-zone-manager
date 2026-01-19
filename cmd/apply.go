@@ -25,8 +25,9 @@ This command:
 
 A record set is considered managed if it has at least one comment where its
 'account' property value matches the configured account name.`,
-	Args: cobra.ExactArgs(1),
-	RunE: runApply,
+	Args:         cobra.ExactArgs(1),
+	SilenceUsage: true,
+	RunE:         runApply,
 }
 
 var dryRun bool
