@@ -13,15 +13,10 @@ const (
 )
 
 var (
-	version string
-	commit  string
-	date    string
+	version = "dev"
+	commit  = "none"
+	date    = "unknown"
 )
-
-// SetVersionInfo sets the version information for the CLI.
-func SetVersionInfo(v, c, d string) {
-	version, commit, date = v, c, d
-}
 
 var rootCmd = &cobra.Command{
 	Use:   "powerdns-zone-manager",
