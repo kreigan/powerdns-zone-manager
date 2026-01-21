@@ -162,6 +162,9 @@ func (m *Manager) applyZone(
 				RRsets: []powerdns.RRset{},
 			}
 		}
+		// Update state since zone is now created and managed
+		state.Exists = true
+		state.IsManaged = true
 		result.ZonesCreated++
 	}
 
@@ -220,9 +223,17 @@ func (m *Manager) applyRRsets(
 				m.log.Debug("  = RRset unchanged: %s %s", desired.Name, desired.Type)
 			}
 		default:
-			// Config specifies a record that exists but is not managed - this is an error
-			return fmt.Errorf("RRset %s %s already exists but is not managed by %s",
-				existing.Name, existing.Type, m.accountName)
+			// Special case: allow updating NS records for managed zones to claim ownership
+			if desired.Type == "NS" && desired.Name == zoneID && state.IsManaged {
+				m.log.Info("  ~ Updating RRset: %s %s", desired.Name, desired.Type)
+				m.logRRsetDiff(&existing, &desired)
+				patchRRsets = append(patchRRsets, m.createRRsetPatch(desired))
+				result.RRsetsUpdated++
+			} else {
+				// Config specifies a record that exists but is not managed - this is an error
+				return fmt.Errorf("RRset %s %s already exists but is not managed by %s",
+					existing.Name, existing.Type, m.accountName)
+			}
 		}
 	}
 
