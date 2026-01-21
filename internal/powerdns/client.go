@@ -45,6 +45,7 @@ func (c *Client) doRequest(
 		if err != nil {
 			return nil, fmt.Errorf("failed to marshal request body: %w", err)
 		}
+		c.log.Debug("Request body: %s", string(data))
 		reqBody = bytes.NewReader(data)
 	}
 
