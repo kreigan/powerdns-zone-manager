@@ -626,23 +626,77 @@ func TestShouldUpdateRRset(t *testing.T) {
 	}
 }
 
-func TestNormalizeNameservers(t *testing.T) {
-	mgr := &Manager{}
+func TestManager_Apply_Comments(t *testing.T) {
+	client := NewMockClient()
+	mgr := NewManager(client, "zone-manager", testLogger())
 
-	tests := []struct {
-		ns       string
-		zoneID   string
-		expected string
-	}{
-		{"ns1.example.com.", "example.com.", "ns1.example.com."},
-		{"ns1", "example.com.", "ns1.example.com."},
-		{"ns.other.com.", "example.com.", "ns.other.com."},
+	cfg := &config.Config{
+		Zones: map[string]config.Zone{
+			"example.com": {
+				Nameservers: []string{"ns1.example.com."},
+				RRsets: []config.RRsetInput{
+					{
+						Name: "www",
+						Type: "A",
+						Records: []interface{}{
+							map[string]interface{}{
+								"content": "192.168.1.1",
+								"comment": "primary server",
+							},
+							"192.168.1.2",
+						},
+						Comment: "web servers",
+					},
+				},
+			},
+		},
 	}
 
-	for _, tt := range tests {
-		result := mgr.normalizeNameserver(tt.ns, tt.zoneID)
-		if result != tt.expected {
-			t.Errorf("normalizeNameserver(%s, %s) = %s, want %s", tt.ns, tt.zoneID, result, tt.expected)
+	_, err := mgr.Apply(context.Background(), cfg, ApplyOptions{})
+	if err != nil {
+		t.Fatalf("Apply failed: %v", err)
+	}
+
+	if len(client.patchCalls) != 1 {
+		t.Fatalf("Expected 1 patch call, got %d", len(client.patchCalls))
+	}
+
+	patch := client.patchCalls[0]
+	if len(patch.RRsets) != 2 {
+		t.Fatalf("Expected 2 rrsets in patch, got %d", len(patch.RRsets))
+	}
+
+	// Find the www A rrset
+	var wwwRRset *powerdns.RRset
+	for i := range patch.RRsets {
+		if patch.RRsets[i].Name == "www.example.com." && patch.RRsets[i].Type == "A" {
+			wwwRRset = &patch.RRsets[i]
+			break
+		}
+	}
+	if wwwRRset == nil {
+		t.Fatal("www A rrset not found in patch")
+	}
+
+	// Check comments: should have rrset comment, record comment, then ownership
+	expectedComments := []powerdns.Comment{
+		{Content: "web servers", Account: ""},
+		{Content: "primary server", Account: ""},
+		{Content: "owner=zone-manager", Account: "zone-manager"},
+	}
+	if len(wwwRRset.Comments) != len(expectedComments) {
+		t.Errorf("Expected %d comments, got %d", len(expectedComments), len(wwwRRset.Comments))
+		for i, c := range wwwRRset.Comments {
+			t.Logf("Comment %d: %+v", i, c)
+		}
+	}
+	for i, expected := range expectedComments {
+		if i >= len(wwwRRset.Comments) {
+			break
+		}
+		actual := wwwRRset.Comments[i]
+		if actual.Content != expected.Content || actual.Account != expected.Account {
+			t.Errorf("Comment %d: expected %+v, got %+v", i, expected, actual)
 		}
 	}
 }

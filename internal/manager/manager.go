@@ -345,10 +345,11 @@ func (m *Manager) buildDesiredRRsets(
 		}
 
 		desired[key] = powerdns.RRset{
-			Name:    fqdn,
-			Type:    rrset.Type,
-			TTL:     rrset.TTL,
-			Records: records,
+			Name:     fqdn,
+			Type:     rrset.Type,
+			TTL:      rrset.TTL,
+			Records:  records,
+			Comments: m.makeComments(rrset),
 		}
 	}
 
@@ -356,24 +357,43 @@ func (m *Manager) buildDesiredRRsets(
 }
 
 func (m *Manager) createRRsetPatch(desired powerdns.RRset) powerdns.RRset {
+	comments := make([]powerdns.Comment, len(desired.Comments)+1)
+	copy(comments, desired.Comments)
+	comments[len(desired.Comments)] = powerdns.Comment{
+		Content: m.ownerComment(),
+		Account: m.accountName,
+	}
 	return powerdns.RRset{
 		Name:       desired.Name,
 		Type:       desired.Type,
 		TTL:        desired.TTL,
 		ChangeType: "REPLACE",
 		Records:    desired.Records,
-		Comments: []powerdns.Comment{
-			{
-				Content: m.ownerComment(),
-				Account: m.accountName,
-			},
-		},
+		Comments:   comments,
 	}
 }
 
 // ownerComment returns the ownership marker comment content.
 func (m *Manager) ownerComment() string {
 	return "owner=" + m.accountName
+}
+
+// makeComments converts config comments to PowerDNS comments, preserving order.
+func (m *Manager) makeComments(rrset config.RRset) []powerdns.Comment {
+	var comments []string
+	if rrset.Comment != "" {
+		comments = append(comments, rrset.Comment)
+	}
+	for _, rec := range rrset.Records {
+		if rec.Comment != "" {
+			comments = append(comments, rec.Comment)
+		}
+	}
+	pcs := make([]powerdns.Comment, 0, len(comments))
+	for _, c := range comments {
+		pcs = append(pcs, powerdns.Comment{Content: c, Account: ""})
+	}
+	return pcs
 }
 
 // isManaged returns true if the RRset has an ownership comment matching our account.
